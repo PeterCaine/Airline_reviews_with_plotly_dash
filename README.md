@@ -2,5 +2,5 @@
 A project visualising a range of nlp approaches to consumer reviews using plotly dash 
 
 <p>
-<src = 'https://github.com/PeterCaine/Airline_reviews_with_plotly_dash/blob/master/assets/image.PNG'>
+<img src = 'https://github.com/PeterCaine/Airline_reviews_with_plotly_dash/blob/master/assets/image.PNG'>
  </p>

@@ -1,3 +1,4 @@
+from flask import Flask, send_from_directory 
 import dash
 import dash_core_components as dcc
 import dash_html_components as html
@@ -8,29 +9,28 @@ import plotly.express as px
 import os
 import pickle
 import random
-import webbrowser
 
-from utils import load_dfs, keyword_reviews, write_out, freq_bigram_finder, freq_trigram_finder, count_patterns,\
-    open_unique_adjn, load_adj_count, df_lookup_iloc, load_unique, review_ids_for_keyword,\
-    airline_bucket_reviews_count, graph_display, reviews_on_single_keyword, context_filter
+from utils import load_dfs, keyword_reviews, write_out, freq_bigram_finder, freq_trigram_finder, \
+    count_patterns, open_unique_adjn, load_adj_count, df_lookup_iloc, load_unique, \
+    review_ids_for_keyword, airline_bucket_reviews_count, graph_display, reviews_on_single_keyword, \
+    context_filter, on_brand_text
 # ------------------------------------------------------------------------
 
 
 external_stylesheets = ['https://codepen.io/chriddyp/pen/bWLwgP.css']
-
-app = dash.Dash(__name__, external_stylesheets=external_stylesheets)
-server = app.server
+server = Flask(__name__) 
+app = dash.Dash(server=server, external_stylesheets=external_stylesheets)
 
 app.layout = html.Div([
     # URL
-    dcc.Location(id='url', refresh=False),
+    dcc.Location(id='url', refresh=True),
     # HEADER
     html.Div([
         html.Img(
             id='airline_logo1',
             src=app.get_asset_url('ghost_TA.png'),
             style={
-                'width': '8%',
+                'width': '11%',
                 # 'float': 'right',
                 # 'position': 'relative',
                 'margin-top': 40,
@@ -62,7 +62,7 @@ app.layout = html.Div([
             # className = 'three columns',
             style={
                 # 'height':"8.33%",
-                'width': "8%",
+                'width': "11%",
                 'float': 'right',
                 # 'position':'relative',
                 'margin-top': 40,
@@ -73,7 +73,7 @@ app.layout = html.Div([
     ], id='header', className='row'),
     html.Hr(),
     dcc.Tabs(id='mother_tab', value='tab_1', children=[
-            dcc.Tab(value='tab_1', label='Main', children=[
+        dcc.Tab(value='tab_1', label='Main', children=[
                 # BODY
                 html.Div([
                     # NAVBAR
@@ -96,38 +96,20 @@ app.layout = html.Div([
                         html.Br(),
                         html.H5("Select ratings range"),
                         dcc.RangeSlider(
-                                id='my_range_slider',
-                                min=1,
-                                max=5,
-                                step=None,
-                                value=[1, 5],
-                                marks={
-                                        1: '1 star',
-                                        2: '2 star',
-                                        3: '3 star',
-                                        4: '4 star',
-                                        5: '5 star'
-                                    },
-                            ),
+                            id='my_range_slider',
+                            min=1,
+                            max=5,
+                            step=None,
+                            value=[1, 5],
+                            marks={
+                                1: '1 star',
+                                2: '2 star',
+                                3: '3 star',
+                                4: '4 star',
+                                5: '5 star'
+                            },
+                        ),
                         html.Br(),
-                        html.Br(),
-                        html.H5(children="General Linguistic Features"),
-                        html.Button(id='bigrams_btn', children="Signature bigrams (PMI)", style={'width': '100%'}),
-                        html.Br(),
-                        html.Br(),
-                        html.Button(id='trigrams_btn', children="Signature trigrams (PMI)", style={'width': '100%'}),
-                        html.Br(),
-                        html.Br(),
-                        html.Button(id='common_btn', children="Most Common", style={'width': '100%'}),
-                        html.Br(),
-                        html.Br(),
-                        html.Button(id='unique_btn', children="Unique Phrases", style={'width': '100%'}),
-                        html.Br(),
-                        html.Br(),
-                        html.Button(id='visualise_btn', children="Visualise Clusters", style={'width': '100%'}),
-                        html.Br(),
-                        html.Br(),
-                        html.Button(id='variation_btn', children="Varied Reviews", style={'width': '100%'}),
                         html.Br(),
                         html.Br(),
                         html.Table([
@@ -147,28 +129,50 @@ app.layout = html.Div([
                                 ]),
                                 html.Tr([
                                     html.Td("percent returned"),
-                                    html.Td(id='percent_texts', style={'background': 'green', 'color': 'white'})
+                                    html.Td(id='percent_texts', style={
+                                        'background': 'green', 'color': 'white'})
                                 ])
                             ])
                         ], style={'width': '100%'}, className='table'),
                         html.Br(),
                         html.Br(),
                         html.Br(),
+                        html.H5(children="General Linguistic Features"),
+                        html.Button(id='bigrams_btn', children="Signature bigrams (PMI)",
+                                    style={'width': '100%'}),
+                        html.Br(),
+                        html.Button(id='trigrams_btn', children="Signature trigrams (PMI)",
+                                    style={'width': '100%'}),
+                        html.Br(),
+                        html.Button(id='common_btn', children="Most Common",
+                                    style={'width': '100%'}),
+                        html.Br(),
+                        html.Button(id='unique_btn', children="Unique Phrases",
+                                    style={'width': '100%'}),
+                        html.Br(),
+                        html.Button(id='visualise_btn', children="Visualise Clusters",
+                                    style={'width': '100%'}),
+                        html.Br(),
+                        html.Button(id='variation_btn', children="Varied Reviews",
+                                    style={'width': '100%'}),
+                        html.Br(),
+                        html.Br(),
+                        html.Br(),
                     ], id='navbar', className='three columns'),
                     html.Br(),
-                    # SELECTOR ROW
+                    # SELECTOR ROW - this was proving too slow on the server so have omitted this in production
                     html.Div([
-                        html.Div([
-                            html.Br(),
-                            html.Br(),
-                            dcc.RadioItems(
-                                id='synonym_selector',
-                                options=[
-                                    {'label': 'Use Synonyms', 'value': 'y'},
-                                    {'label': 'No Synonyms', 'value': 'n'}
-                                ],
-                                value='n'),
-                        ], className='two columns'),
+                        # html.Div([
+                        #     html.Br(),
+                        #     html.Br(),
+                        #     dcc.RadioItems(
+                        #         id='synonym_selector',
+                        #         options=[
+                        #             {'label': 'Use Synonyms', 'value': 'y'},
+                        #             {'label': 'No Synonyms', 'value': 'n'}
+                        #         ],
+                        #         value='n'),
+                        # ], className='two columns'),
                         html.Div([
                             html.Div([
                                 html.H5(children='Keywords used:'),
@@ -185,7 +189,7 @@ app.layout = html.Div([
                                 id='keyword_input',
                                 placeholder="Enter keywords separated by commas or review number prefixed with '#'",
                                 value='',
-                                cols=50
+                                cols=70
                             )
                         ], style={'float': 'right'})
                     ], className='nine columns', style={'left-margin': 50}),
@@ -193,17 +197,21 @@ app.layout = html.Div([
                     html.Hr(className='seven columns offset-by-one'),
                     # GRAPH
                     html.Div([
-                        dcc.Graph(
-                            id='keyword_contribution',
-                            figure={}
-                        ),
+                        dcc.Loading(id='main-loadscreen', children=[
+                            dcc.Graph(
+                                id='keyword_contribution',
+                                figure={}
+                            ),
+                        ]),
                         html.Br(),
                         html.Br(),
                         html.Div([
                             html.H5("Analysis Out"),
-                            html.P(
-                                id='analysis_text'
-                            )
+                            dcc.Loading([
+                                html.P(
+                                    id='analysis_text',
+                                )
+                            ]),
                         ], className='four columns'),
                         # TEXT FIELD
                         html.Div([
@@ -214,24 +222,29 @@ app.layout = html.Div([
                         html.Br(),
                         html.Button(id='save_texts',
                                     children="Save Texts",
-                                    style={'width': '10%', 'float': 'right', 'position': 'relative'}
+                                    style={'width': '10%', 'float': 'right', 'position': 'relative'},
+                                    title="After saving, download the saved texts in the link above."
                                     ),
                         html.Br(),
                         html.Br(),
-                    ], id='right_pane', className='nine columns')
-                ], id='body', className='row')
-            ], className='custom-tab', selected_className='custom-tab--selected'),# we modified here
-            dcc.Tab(id='bucket_tab', value='tab_bucket', label='On-brand Evaluator', children=[
+                    ], id='right_pane', className='nine columns'),
+                    html.Div(id='empty_div'),
+                    html.A(id='download_saved_texts', children="Download Saved Texts",
+                           href='/downloads/', target='_blank', title="Only the last saved texts will be downloaded")
+                ], id='body', className='row'),
+                ], className='custom-tab', selected_className='custom-tab--selected'),  # we modified here
+        dcc.Tab(id='bucket_tab', value='tab_bucket', label='On-brand Evaluator', children=[
                 html.Br(),
                 html.Br(),
                 html.Div([
                     html.H5("Each airline proposes characteristics of the brand."),
-                    html.Div("""For each airline, these characteristics have been condensed into concepts and each 
+                    html.Div("""For each airline, these characteristics have been condensed into concepts and each
                     concept associated with lists of keywords.
                     Reviews which mention these keywords are tallied and compared.
-                    
+
                     These keywords can be explored in the 'explore keywords' tab.""", style={'margin-left': 100}),
-                    ], className='eight columns offset-by-two'),
+                ], className='eight columns offset-by-two'),
+                html.Div(id='none'),
                 html.Br(),
                 html.Br(),
                 html.Div([
@@ -263,8 +276,8 @@ app.layout = html.Div([
                     dcc.Graph(id='RY_graph', className='five columns'),
                     dcc.Graph(id='VI_graph', className='five columns')
                 ])
-            ],className='custom-tab', selected_className='custom-tab--selected'),# AND HERE
-            dcc.Tab(label='Explore Keywords', value='tab_concept', children=[
+                ], className='custom-tab', selected_className='custom-tab--selected'),  # AND HERE
+        dcc.Tab(label='Explore Keywords', value='tab_concept', children=[
                 html.Div(id='probe_display', children=[
                     html.Br(),
                     html.Br(),
@@ -274,11 +287,12 @@ app.layout = html.Div([
                               placeholder="input keyword to compare",
                               className='two columns',
                               ),
-                    dcc.Graph(id='compare_word',
-                              figure={},
-                              className='eight columns',
-                              # style={'float': 'right'}
-                              ),
+                    dcc.Loading(id='loading-icon', children=[
+                        dcc.Graph(id='compare_word',
+                                  figure={},
+                                  className='eight columns',
+                                  ),
+                    ]),
                 ], className='row'),
                 html.Br(),
                 html.Br(),
@@ -311,7 +325,7 @@ app.layout = html.Div([
                         html.H5("Filter context"),
                         dcc.Input(id='context_keyword_input',
                                   value='',
-                                  placeholder="""Enter keyword to filter for specific bigrams. Separate multiple 
+                                  placeholder="""Enter keyword to filter for specific bigrams. Separate multiple
 keywords with a comma""",
                                   style={'width': '100%'},
                                   className='two columns'
@@ -326,44 +340,43 @@ keywords with a comma""",
                     html.Br(),
                     html.Br(),
                 ], className='eight columns offset-by-two')
-            ],className='custom-tab', selected_className='custom-tab--selected'), #and here
-            dcc.Tab(label='Adjective Distribution', children=[
-                    html.Br(),
-                    html.Br(),
-                    html.Div([
-                        html.Div([
-                            dcc.Slider(
-                                id='num_adj',
-                                min=20,
-                                max=200,
-                                step=10,
-                                value=50,
-                                marks={
-                                    20: {'label': 'fewer'},
-                                    200: {'label': 'more'}
-                                },
-                                className='nine columns'),
-                            dcc.RadioItems(
-                                id='unique_switch',
-                                options=[{'label': 'Unique Only', 'value': 1},
-                                         {'label': 'All', 'value': 0}],
-                                value=0,
-                                style={'float': 'right'}
-                            ),
-                        ], className='four columns offset-by-four'),
-                    ], className='row'),
-                    html.Div([
-                        dcc.Graph(id='graph_BA'),
-                        dcc.Graph(id='graph_Easy'),
-                        dcc.Graph(id='graph_Klm'),
-                        dcc.Graph(id='graph_Ryan'),
-                        dcc.Graph(id='graph_Virgin')
-                    ], className='twelve columns ')
-                    ], value='tab_2',
-                    className='custom-tab', selected_className='custom-tab--selected'), # and here
-        ]),
+                ], className='custom-tab', selected_className='custom-tab--selected'), 
+        dcc.Tab(label='Adjective Distribution', children=[
+            html.Br(),
+            html.Br(),
+            html.Div([
+                html.Div([
+                    dcc.Slider(
+                        id='num_adj',
+                        min=20,
+                        max=200,
+                        step=10,
+                        value=50,
+                        marks={
+                            20: {'label': 'fewer'},
+                            200: {'label': 'more'}
+                        },
+                        className='nine columns'),
+                    dcc.RadioItems(
+                        id='unique_switch',
+                        options=[{'label': 'Unique Only', 'value': 1},
+                                 {'label': 'All', 'value': 0}],
+                        value=0,
+                        style={'float': 'right'}
+                    ),
+                ], className='four columns offset-by-four'),
+            ], className='row'),
+            html.Div([
+                dcc.Graph(id='graph_BA'),
+                dcc.Graph(id='graph_Easy'),
+                dcc.Graph(id='graph_Klm'),
+                dcc.Graph(id='graph_Ryan'),
+                dcc.Graph(id='graph_Virgin')
+            ], className='twelve columns ')
+        ], value='tab_2',
+            className='custom-tab', selected_className='custom-tab--selected'), 
+    ]),
 ], className='ten columns offset-by-one')
-
 # ------------------------------------------------------------------------------------------------
 
 
@@ -374,16 +387,20 @@ keywords with a comma""",
      Output(component_id='percent_texts', component_property='children'),
      Output(component_id='total_returned', component_property='children'),
      Output(component_id='total_in_range', component_property='children'),
-     Output(component_id='total_texts', component_property='children')
+     Output(component_id='total_texts', component_property='children'),
+     Output("download_saved_texts", "href")
      ],
     [Input('airline_dropdown', 'value'),
-     Input('synonym_selector', 'value'),
+     # Input('synonym_selector', 'value'),
      Input('my_range_slider', 'value'),
      Input('save_texts', 'n_clicks'),
      Input('keyword_input', 'value'),
-     Input('variation_btn', 'n_clicks')]
+     Input('variation_btn', 'n_clicks'),
+     Input("download_saved_texts", "n-clicks")]
 )
-def update_output(airline_dropdown, synonym_selector, my_range_slider, save_texts, keyword_input, variation_btn):
+def update_output(airline_dropdown,  my_range_slider,
+                  save_texts, keyword_input, variation_btn, download_saved_texts):  # synonym_selector
+    image = app.get_asset_url(f'{airline_dropdown}.png')
     keyword_dict = pickle.load(open('./data/keyword_dict.pkl', 'rb'))
     override_txt = 0
     if keyword_input == "":
@@ -397,37 +414,45 @@ def update_output(airline_dropdown, synonym_selector, my_range_slider, save_text
         keywords = [word.strip() for word in keywords]
         if keywords[-1] == '':
             keywords.pop()
-    df, tot, abs_tot = load_dfs(airline_dropdown, min_rating=my_range_slider[0], max_rating=my_range_slider[1])
-    texts, plotly, updated_keywords, overlaps = keyword_reviews(keywords, df, use_syn=synonym_selector)
+    df, tot, abs_tot = load_dfs(
+        airline_dropdown, min_rating=my_range_slider[0], max_rating=my_range_slider[1])
+    texts, plotly, updated_keywords, overlaps = keyword_reviews(
+        keywords, df)  # deleted use_syn=synonym_selector
     keyword_text = ', '.join(updated_keywords)
-    fig = go.Figure(
-        data=[go.Bar(
-            x=list(plotly.keys()),
-            y=list(plotly.values())
-        )],
-        layout=go.Layout(
-            title=go.layout.Title(text="How Keywords contribute to Reviews"),
-            template='plotly_white'
-        )
+    fig = go.Figure(data=[go.Bar(
+                            x=list(plotly.keys()),
+                            y=list(plotly.values())
+                    )],
+                    layout=go.Layout(
+                        title=go.layout.Title(text="How Keywords contribute to Reviews"),
+                        template='plotly_white'
+                    )
     )
+    href_out = os.path.join(
+        'downloads',
+        f'{airline_dropdown}_texts.txt')
     if dash.callback_context.triggered:
         changed_id = dash.callback_context.triggered[0]
         if 'save_texts' in changed_id['prop_id']:
             write_out(airline_dropdown, texts)
+            relative_filename = os.path.join( 
+                'downloads',  f'{airline_dropdown}_texts.txt')
+            href_out = f'/{relative_filename}'  
         elif 'variation' in changed_id['prop_id']:
-            fig = go.Figure(
-                data=[go.Bar(x=[tup[0] for tup in overlaps],
+            fig = go.Figure(data=[go.Bar(x=[tup[0] for tup in overlaps],
                              y=[tup[2] for tup in overlaps])],
-                layout=go.Layout(
-                    title='High variation texts'
-                )
+                            layout=go.Layout(
+                                title='High variation texts'
+                            )
             )
+
     try:
         text = random.choice(texts)
         text_out = 'SAMPLE TEXT: \n' + text
     except Exception as e:
         print("Oops!", e.__class__, "occurred.")
         text_out = "There are NO REVIEWS containing this keyword"
+
     num_returned = len(texts)
     percent = str(round(num_returned/tot*100, 2)) + ' %'
     percent_out = f'{percent}'
@@ -435,8 +460,9 @@ def update_output(airline_dropdown, synonym_selector, my_range_slider, save_text
         container = text_out
     else:
         container = 'Review: ' + str(review_idx) + ": " + override_txt
-    image = app.get_asset_url(f'{airline_dropdown}.png')
-    return container, keyword_text, fig, percent_out, num_returned, tot, abs_tot
+
+    fig.update_layout(yaxis_title='Number of Reviews')
+    return container, keyword_text, fig, percent_out, num_returned, tot, abs_tot, href_out
 
 
 @app.callback(
@@ -463,7 +489,8 @@ def analysis_section(airline_dropdown, bigrams_btn, trigrams_btn, common_btn, un
             analysis_text = ' - '.join(analysis_list)
             return "TRIGRAMS: "+analysis_text
         elif 'common' in changed_id['prop_id']:
-            analysis_text = count_patterns(airline_dropdown, num_return=num_return)
+            analysis_list = count_patterns(df, num_return=num_return)
+            analysis_text = ' - '.join(analysis_list)
             return "MOST COMMON: "+analysis_text
         elif 'unique' in changed_id['prop_id']:
             analysis_text = open_unique_adjn(airline_dropdown, num_return=num_return)
@@ -480,8 +507,7 @@ def navigate(visualise_btn, airline_dropdown):
         changed_id = dash.callback_context.triggered[0]
         if 'visualise' in changed_id['prop_id']:
             filepath = f'static/ldavis_{airline_dropdown}15.html'
-            webbrowser.open('file://' + os.path.realpath(filepath))
-            return 'http://dummy_return'
+            return filepath
 
 
 @app.callback(
@@ -521,7 +547,7 @@ def display_adj_count(slider, unique_switch):
 )
 def compare_keywords(keyword):
     airlines = ['British_Airways', 'EasyJet', 'KLM', 'Ryanair', 'Virgin']
-    keyword = keyword
+    keyword = keyword.strip()
     kwd = [keyword]
     fig = go.Figure(data=[
         go.Bar(name=airlines[0], x=kwd, y=[review_ids_for_keyword(airlines[0], keyword) / 148]),
@@ -565,43 +591,61 @@ def reveal_datatable(keyword, airlines_2, concordance_select, context_keyword_in
      Output('EZ_graph', 'figure'),
      Output('KL_graph', 'figure'),
      Output('RY_graph', 'figure'),
-     Output('VI_graph', 'figure'),
-     Output('in_focus_graph', 'figure'),
-     Output('div_out', 'children')],
-    [Input('airline_in_focus', 'value')]
+     Output('VI_graph', 'figure')
+     ],
+    [Input('none', 'children')]
 )
 def pop_bucket_graph(airline_in_focus):
-    out_dict, text_tups_out1 = airline_bucket_reviews_count('British_Airways')
+    out_dict = airline_bucket_reviews_count('British_Airways')
     fig1 = graph_display(out_dict, 'British_Airways')
-    out_dict, text_tups_out2 = airline_bucket_reviews_count('EasyJet')
+    out_dict = airline_bucket_reviews_count('EasyJet')
     fig2 = graph_display(out_dict, 'EasyJet')
-    out_dict, text_tups_out3 = airline_bucket_reviews_count('KLM')
+    out_dict = airline_bucket_reviews_count('KLM')
     fig3 = graph_display(out_dict, 'KLM')
-    out_dict, text_tups_out4 = airline_bucket_reviews_count('Ryanair')
+    out_dict = airline_bucket_reviews_count('Ryanair')
     fig4 = graph_display(out_dict, 'Ryanair')
-    out_dict, text_tups_out5 = airline_bucket_reviews_count('Virgin')
+    out_dict = airline_bucket_reviews_count('Virgin')
     fig5 = graph_display(out_dict, 'Virgin')
-    if airline_in_focus == 'British_Airways':
-        fig6 = fig1
-        for_div_out = text_tups_out1
-    elif airline_in_focus == 'EasyJet':
-        fig6 = fig2
-        for_div_out = text_tups_out2
-    elif airline_in_focus == 'KLM':
-        fig6 = fig3
-        for_div_out = text_tups_out3
-    elif airline_in_focus == 'Ryanair':
-        fig6 = fig4
-        for_div_out = text_tups_out4
-    else:
-        fig6 = fig5
-        for_div_out = text_tups_out5
 
+    return fig1, fig2, fig3, fig4, fig5
+
+
+@app.callback(
+    [Output('in_focus_graph', 'figure'),
+     Output('div_out', 'children')],
+    [Input('airline_in_focus', 'value'),
+     Input('BA_graph', 'figure'),
+     Input('EZ_graph', 'figure'),
+     Input('KL_graph', 'figure'),
+     Input('RY_graph', 'figure'),
+     Input('VI_graph', 'figure')]
+)
+def for_div_out(airline_in_focus, BA_graph, EZ_graph, KL_graph, RY_graph, VI_graph):
+    tups_out = on_brand_text(airline_in_focus)
     str_out = '### Keywords per category used: \n'
-    for line in for_div_out:
+    for line in tups_out:
         str_out += '* **' + line[0] + ': ' + '**' + line[1] + '\n'
-    return fig1, fig2, fig3, fig4, fig5, fig6, dcc.Markdown(str_out, style={"white-space": "pre"})
+
+    if airline_in_focus == 'British_Airways':
+        return BA_graph, dcc.Markdown(str_out, style={"white-space": "pre"})
+    elif airline_in_focus == 'EasyJet':
+        return EZ_graph, dcc.Markdown(str_out, style={"white-space": "pre"})
+    elif airline_in_focus == 'KLM':
+        return KL_graph, dcc.Markdown(str_out, style={"white-space": "pre"})
+    elif airline_in_focus == 'Ryanair':
+        return RY_graph, dcc.Markdown(str_out, style={"white-space": "pre"})
+    else:
+        return VI_graph, dcc.Markdown(str_out, style={"white-space": "pre"})
 
 
-if __name__ == '__main__':
-    app.run_server(debug=True)
+@server.route("/downloads/<path:path>")
+def download(path):
+    """Serve a file from the downloads directory."""
+    root_dir = os.getcwd()
+    return send_from_directory(
+        os.path.join(root_dir, 'downloads'), path
+    )
+
+
+if __name__ == "__main__":
+    app.run_server()

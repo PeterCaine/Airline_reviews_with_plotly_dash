@@ -8,10 +8,13 @@ import gensim
 import nltk
 from nltk.collocations import BigramCollocationFinder, TrigramCollocationFinder
 from nltk.metrics import BigramAssocMeasures, TrigramAssocMeasures
-from nltk.corpus import stopwords
 
+# model = gensim.models.Word2Vec.load('./data/embeddings/airlines_model')
 conll_df_dict = pickle.load(open('./data/all_conll_dicts.pkl', 'rb'))
 bucket_list_dict = pickle.load(open('./data/bucket_list_dict.pkl', 'rb'))
+with open('data/stopwords.txt', 'r') as infile:
+    f = infile.read()
+stopwords = f.split(',')
 
 
 def load_dfs(airline, min_rating=1, max_rating=5):
@@ -33,20 +36,18 @@ def load_dfs(airline, min_rating=1, max_rating=5):
     return df, tot, abs_tot
 
 
-def keyword_suggest(keyword):
-    """uses custom trained Word2vec embeddings to suggest similar words
-    (min threshold set to 0.7)
-
-    Args:
-        keyword (string): word from list of keywords
-    Returns:
-        tuple: synonyms for the keyword
-    """
-    model = gensim.models.Word2Vec.load(
-        './data/embeddings/airlines_model')
-    synonym_list = (model.wv.most_similar(keyword, topn=5))
-    synonym_out = {word[0].lower() for word in synonym_list if word[1] > 0.7}
-    return synonym_out
+# def keyword_suggest(keyword, model=model):
+#     """uses custom trained Word2vec embeddings to suggest similar words
+#     (min threshold set to 0.7)
+#
+#     Args:
+#         keyword (string): word from list of keywords
+#     Returns:
+#         tuple: synonyms for the keyword
+#     """
+#     synonym_list = (model.wv.most_similar(keyword, topn=5))
+#     synonym_out = {word[0].lower() for word in synonym_list if word[1] > 0.7}
+#     return synonym_out
 
 
 def synonym_selector(word_list, use_syn):
@@ -61,22 +62,23 @@ def synonym_selector(word_list, use_syn):
         list: list of keywords either as it was given (if use_syn = 'n') or
         expanded to include synoyms as determined by keyword_suggest (above)
     """
-    expanded_wordlist = []
-    if use_syn == "y":
-        for word in word_list:
-            expanded_wordlist.append(word)
-            try:
-                syn_set = keyword_suggest(word)
-                if len(syn_set) > 0:
-                    for w in syn_set:
-                        expanded_wordlist.append(w)
-            except Exception as e:
-                print("Oops!", e.__class__, "occurred.")
-                pass
-    else:
-
-        return word_list
-    return expanded_wordlist
+    # expanded_wordlist = []
+    # if use_syn == "y":
+    #     for word in word_list:
+    #         expanded_wordlist.append(word)
+    #         try:
+    #             syn_set = keyword_suggest(word)
+    #             if len(syn_set) > 0:
+    #                 for w in syn_set:
+    #                     expanded_wordlist.append(w)
+    #         except Exception as e:
+    #             print("Oops!", e.__class__, "occurred in synonym search")
+    #             pass
+    # else:
+    #
+    #     return word_list
+    return word_list
+    # return expanded_wordlist
 
 
 def reviews_on_single_keyword(keyword, dataframe):
@@ -89,7 +91,7 @@ def reviews_on_single_keyword(keyword, dataframe):
     dataframe['lowered'] = dataframe.joined_col.str.lower()
     kwd = keyword.lower()
     df = dataframe.loc[
-                    dataframe.lowered.str.contains(' ' + kwd)]
+        dataframe.lowered.str.contains(' ' + kwd)]
     return df[['rating', 'joined_col']]
 
 
@@ -118,7 +120,7 @@ def keyword_reviews(keyword_list, dataframe, use_syn='n'):
         if len(keyword.split(' ')) == 1:
             try:
                 out_dict[keyword] = dataframe.loc[
-                    dataframe.lowered.str.contains(' ' + keyword + '\W')
+                    dataframe.lowered.str.contains(' ' + keyword + r'\W')
                 ]
             except Exception as e:
                 print("Oops!", e.__class__, "occurred.")
@@ -164,7 +166,7 @@ def write_out(airline, texts):
     :param texts: (pd.Series) series of selected review texts
     :return: None
     """
-    with open(f'./saved_reviews/{airline}_texts.txt', 'a', encoding='utf-8') as outfile:
+    with open(f'downloads/{airline}_texts.txt', 'a', encoding='utf-8') as outfile:
         for line in texts:
             new_line = line + '\n\n'
             outfile.write(new_line)
@@ -179,16 +181,16 @@ def series_to_token_list(series):
     words = [word.lower() for review in series for word in review.split()]
     all_text_as_string = ' '.join(words)
     # replace digits of any length with dd
-    digits_stripped = re.sub ('\d+', 'dd', all_text_as_string)
+    digits_stripped = re.sub('\d+', 'dd', all_text_as_string)
     no_punct = re.sub(r'[^A-Za-z0-9 ] + ', '', digits_stripped)
     # split into list
     out_list = no_punct.split()
     return out_list
 
 
-def freq_bigram_finder(df, stopwords=stopwords.words('english'), min_freq=4, num_return=50,
+def freq_bigram_finder(df, stopwords=stopwords, min_freq=4, num_return=50,
                        measure=BigramAssocMeasures.pmi):
-    """takes a dataframe and returns most frequent bigrams as measured using a particular metric
+    """takes a dataframe and returns bigrams as measured using a particular metric
 
     :param df: (pd. DataFrame) dataframe of review texts
     :param stopwords: (set) nltk.corpus.stopwords
@@ -201,7 +203,7 @@ def freq_bigram_finder(df, stopwords=stopwords.words('english'), min_freq=4, num
     series_as_token_list = series_to_token_list(df['joined_col'])
     bcf = BigramCollocationFinder.from_words(series_as_token_list)
     stopset = set(stopwords)
-    filter_stops = lambda w: len(w) < 3 or w in stopset
+    def filter_stops(w): return len(w) < 3 or w in stopset
     bcf.apply_word_filter(filter_stops)
     bcf.apply_freq_filter(min_freq)
     tups_out = bcf.nbest(measure, num_return)
@@ -209,9 +211,9 @@ def freq_bigram_finder(df, stopwords=stopwords.words('english'), min_freq=4, num
     return joined_tups
 
 
-def freq_trigram_finder(df, stopwords=stopwords.words('english'), min_freq=4, num_return=50,
-                         measure=TrigramAssocMeasures.pmi):
-    """takes a dataframe and returns most frequent trigrams as measured using a particular metric
+def freq_trigram_finder(df, stopwords=stopwords, min_freq=4, num_return=50,
+                        measure=TrigramAssocMeasures.pmi):
+    """takes a dataframe and returns trigrams as measured using a particular metric
 
     :param df: (pd. DataFrame) dataframe of review texts
     :param stopwords: (set) nltk.corpus.stopwords
@@ -224,7 +226,7 @@ def freq_trigram_finder(df, stopwords=stopwords.words('english'), min_freq=4, nu
     series_as_token_list = series_to_token_list(df['joined_col'])
     tcf = TrigramCollocationFinder.from_words(series_as_token_list)
     stopset = set(stopwords)
-    filter_stops = lambda w: len(w) < 3 or w in stopset
+    def filter_stops(w): return len(w) < 3 or w in stopset
     tcf.apply_word_filter(filter_stops)
     tcf.apply_freq_filter(min_freq)
     tups_out = tcf.nbest(measure, num_return)
@@ -232,7 +234,9 @@ def freq_trigram_finder(df, stopwords=stopwords.words('english'), min_freq=4, nu
     return joined_tups
 
 
-def count_patterns(airline, num_return=50):
+# def count_patterns(airline, num_return=50, slider):
+def count_patterns(df, stopwords=stopwords, min_freq=0, num_return=50,
+                   measure=BigramAssocMeasures.likelihood_ratio):
     """produces a list of most_common bigrams based on sheer frequency and their frequency as a string
 
     :param airline: (string) name of airline
@@ -248,6 +252,15 @@ def count_patterns(airline, num_return=50):
     for word, count in most_common[:num_return]:
         text_out += word + ':' + str(count) + ', '
     return text_out
+    # series_as_token_list = series_to_token_list(df['joined_col'])
+    # bcf = BigramCollocationFinder.from_words(series_as_token_list)
+    # stopset = set(stopwords)
+    # def filter_stops(w): return len(w) < 3 or w in stopset
+    # bcf.apply_word_filter(filter_stops)
+    # bcf.apply_freq_filter(min_freq)
+    # tups_out = bcf.nbest(measure, num_return)
+    # joined_tups = [' '.join(words) for words in tups_out]
+    # return joined_tups
 
 
 def open_unique_adjn(airline, num_return=50):
@@ -276,7 +289,11 @@ def load_adj_count(airline, val):
     count = pickle.load(open(f'./data/adjective_count/adjectives_only_{airline}_counter.pkl', 'rb'))
     x = [tup[0] for tup in count.most_common(val)]
     y = [tup[1] for tup in count.most_common(val)]
-    fig = px.bar(x=x, y=y, color=y, title=f"Most Common Adjectives: {airline}", template='plotly_white')
+    fig = px.bar(x=x, y=y, color=y,
+                 title=f"Most Common Adjectives: {airline}", template='plotly_white',
+                 labels={
+                     "y": "Number of Reviews"
+                 },)
     return fig
 
 
@@ -301,9 +318,12 @@ def load_unique(val):
     count_klm = pickle.load(open('./data/adjective_count/adjectives_only_KLM_counter.pkl', 'rb'))
     count_aritish_airways = pickle.load(
         open('./data/adjective_count/adjectives_only_British_Airways_counter.pkl', 'rb'))
-    count_easyjet = pickle.load(open('./data/adjective_count/adjectives_only_EasyJet_counter.pkl', 'rb'))
-    count_ryanair = pickle.load(open('./data/adjective_count/adjectives_only_Ryanair_counter.pkl', 'rb'))
-    count_virgin = pickle.load(open('./data/adjective_count/adjectives_only_Virgin_counter.pkl', 'rb'))
+    count_easyjet = pickle.load(
+        open('./data/adjective_count/adjectives_only_EasyJet_counter.pkl', 'rb'))
+    count_ryanair = pickle.load(
+        open('./data/adjective_count/adjectives_only_Ryanair_counter.pkl', 'rb'))
+    count_virgin = pickle.load(
+        open('./data/adjective_count/adjectives_only_Virgin_counter.pkl', 'rb'))
     count_dict = {'KLM': count_klm.most_common(),
                   'British_Airways': count_aritish_airways.most_common(),
                   'EasyJet': count_easyjet.most_common(),
@@ -322,36 +342,6 @@ def load_unique(val):
         for_assignment = [v for v in count_dict[airline] if v[0] in airline_out]
         final_dict[airline] = for_assignment[:val]
     return final_dict
-
-
-def load_tsv(airline_name):
-    """loads a tsv file containing CoreNLP parsed reviews in tsv format as pd.DataFrame
-
-    Args:
-        airline_name (string): name of airline
-
-    Returns:
-        pd.Dataframe: conll formatted reviews as dataframe
-    """
-    names = ['sent_id', 'word_id', 'word', 'lemma', 'upos', 'xpos', 'head', 'deprel']
-    path = './data/conlls/'
-    if airline_name == 'Virgin':
-        df = pd.read_csv(f'{path}Virgin.tsv', sep='\t', names=names, skiprows=[0])
-        return df
-    elif airline_name == 'British_Airways':
-        df = pd.read_csv(f'{path}British_Airways.tsv', sep='\t', names=names, skiprows=[0])
-        return df
-    elif airline_name == 'EasyJet':
-        df = pd.read_csv(f'{path}EasyJet.tsv', sep='\t', names=names, skiprows=[0])
-        return df
-    elif airline_name == 'Ryanair':
-        df = pd.read_csv(f'{path}Ryanair.tsv', sep='\t', names=names, skiprows=[0])
-        return df
-    elif airline_name == 'KLM':
-        df = pd.read_csv(f'{path}KLM.tsv', sep='\t', names=names, skiprows=[0])
-        return df
-    else:
-        print("no such airline")
 
 
 def review_ids_for_keyword(airline, keyword):
@@ -380,18 +370,22 @@ def airline_bucket_reviews_count(airline_in):
     out_dict = {}
     for airline in airlines:
         interim_dict = {}
+        df = conll_df_dict[airline]
         for bucket, bucket_set in bucket_list_dict[airline_in].items():
-            df = conll_df_dict[airline]
             dff = df.loc[df['word'].isin(bucket_set)]
             reviews = set(dff.review_id)
             interim_dict[bucket] = (reviews, len(reviews))
         out_dict[airline] = interim_dict
+    return out_dict
+
+
+def on_brand_text(airline):
     text_tups_out = []
-    for keys, vals in bucket_list_dict[airline_in].items():
+    for keys, vals in bucket_list_dict[airline].items():
         str_vals = [val for val in vals]
         joined_vals = ', '.join(str_vals)
         text_tups_out.append((keys, joined_vals))
-    return out_dict, text_tups_out
+    return text_tups_out
 
 
 def graph_display(out_dict, airline):
@@ -417,7 +411,7 @@ def graph_display(out_dict, airline):
         go.Bar(name='VI', x=x, y=vi_y)],
         layout=go.Layout(
         title=go.layout.Title(text=f"{airline} Brand Characteristics Compared")
-               )
+    )
     )
     fig.update_layout(colorway=['blue', 'orange', 'lightblue', 'darkblue', 'red'],
                       template='plotly_white', yaxis_title="% of Reviews")
